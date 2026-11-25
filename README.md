@@ -19,10 +19,10 @@ CPU   6%   RAM  64%   DISK  66%
 
 ## How the numbers are read
 
-| Metric | Source |
-| ------ | ------ |
-| CPU %  | Delta of the aggregate `cpu` line in `/proc/stat` between samples (idle + iowait counted as idle) |
-| RAM %  | `(MemTotal − MemAvailable) / MemTotal` from `/proc/meminfo` (falls back to `MemFree + Buffers + Cached` on old kernels) |
+| Metric | Source                                                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| CPU %  | Delta of the aggregate `cpu` line in `/proc/stat` between samples (idle + iowait counted as idle)                        |
+| RAM %  | `(MemTotal − MemAvailable) / MemTotal` from `/proc/meminfo` (falls back to `MemFree + Buffers + Cached` on old kernels)  |
 | Disk % | `df -PB1` on the configured path — the same figure `df` prints, run asynchronously so the shell's main loop never blocks |
 
 CPU needs two samples to produce a reading: one is taken at enable time and
@@ -53,17 +53,20 @@ Other targets:
 
 ```sh
 make pack        # build gnome-resource-watcher@joel.shell-extension.zip
+make test        # run the unit tests (plain gjs, no shell needed)
 make uninstall   # remove from this user
 make clean
 ```
 
 ## Files
 
-| File | Purpose |
-| ---- | ------- |
-| `extension.js` | Panel indicator, popup menu, sampling logic, timers |
-| `prefs.js` | Adwaita preferences window |
-| `stylesheet.css` | Panel label, menu rows, warning colors |
+| File                    | Purpose                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `extension.js`          | Panel indicator, popup menu, timers, settings wiring                                |
+| `lib.js`                | Pure sampling/parsing logic (shell-independent, unit-tested)                        |
+| `tests/run.js`          | Unit tests for `lib.js` plus schema regression checks                               |
+| `prefs.js`              | Adwaita preferences window                                                          |
+| `stylesheet.css`        | Panel label, menu rows, warning colors                                              |
 | `schemas/*.gschema.xml` | GSettings keys: `update-interval`, `show-cpu`, `show-ram`, `show-disk`, `disk-path` |
 
 ## Notes for development

@@ -9,12 +9,15 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-const CPU_STAT_PATH = '/proc/stat';
-const MEMINFO_PATH = '/proc/meminfo';
-
-// Minimum wall-clock gap between two /proc/stat samples for the CPU
-// percentage to be meaningful.
-const MIN_CPU_SAMPLE_US = 250_000;
+import {
+    cpuUsage,
+    formatBytes,
+    memoryUsagePercent,
+    panelSegment,
+    queryDiskUsage,
+    readCpuTimes,
+    readMemory,
+} from './lib.js';
 
 // Refresh shortly after enabling so the CPU reading appears without
 // waiting a full update interval.
@@ -22,171 +25,6 @@ const PRIME_DELAY_MS = 1000;
 
 const WARN_THRESHOLD = 75;
 const CRIT_THRESHOLD = 90;
-
-function readTextFile(path) {
-    try {
-        const [, bytes] = GLib.file_get_contents(path);
-        return new TextDecoder().decode(bytes);
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Read the aggregate CPU counters from /proc/stat.
- *
- * @returns {{idle: number, total: number, at: number}|null} counters plus
- *   the monotonic timestamp of the sample
- */
-function readCpuTimes() {
-    const text = readTextFile(CPU_STAT_PATH);
-    if (text === null)
-        return null;
-
-    const line = text.split('\n')[0] ?? '';
-    if (!/^cpu\s/.test(line))
-        return null;
-
-    const fields = line.trim().split(/\s+/).slice(1)
-        .map(value => Number(value));
-    if (fields.length < 4)
-        return null;
-
-    let total = 0;
-    for (const field of fields)
-        total += Number.isFinite(field) ? field : 0;
-
-    const idle = (fields[3] ?? 0) + (fields[4] ?? 0); // idle + iowait
-    return {idle, total, at: GLib.get_monotonic_time()};
-}
-
-/**
- * @param {{idle: number, total: number, at: number}|null} previous
- * @param {{idle: number, total: number, at: number}|null} current
- * @returns {number|null} CPU usage in percent, or null when the samples
- *   are missing or too close together
- */
-function cpuUsage(previous, current) {
-    if (!previous || !current)
-        return null;
-    if (current.at - previous.at < MIN_CPU_SAMPLE_US)
-        return null;
-
-    const deltaTotal = current.total - previous.total;
-    const deltaIdle = current.idle - previous.idle;
-    if (deltaTotal <= 0)
-        return null;
-
-    return Math.min(100, Math.max(0, ((deltaTotal - deltaIdle) / deltaTotal) * 100));
-}
-
-/**
- * @returns {{total: number, available: number, used: number}|null}
- */
-function readMemory() {
-    const text = readTextFile(MEMINFO_PATH);
-    if (text === null)
-        return null;
-
-    const field = key => {
-        const match = text.match(new RegExp(`^${key}:\\s+(\\d+)\\s*kB`, 'm'));
-        return match ? Number(match[1]) * 1024 : null;
-    };
-
-    const total = field('MemTotal');
-    if (!total)
-        return null;
-
-    let available = field('MemAvailable');
-    if (available === null) {
-        // Kernels without MemAvailable: approximate with the reclaimable
-        // caches, like free(1) used to do.
-        available = (field('MemFree') ?? 0) + (field('Buffers') ?? 0) +
-            (field('Cached') ?? 0);
-    }
-
-    return {total, available, used: Math.max(0, total - available)};
-}
-
-/**
- * Parse the output of `df -PB1`.
- *
- * @param {string} output
- * @returns {{size: number, used: number, percent: number}|null}
- */
-function parseDfOutput(output) {
-    if (!output)
-        return null;
-
-    const lines = output.trim().split('\n').filter(line => line.trim().length > 0);
-    if (lines.length < 2)
-        return null;
-
-    // POSIX: <filesystem> <1-blocks> <used> <available> <capacity> <mountpoint>
-    const fields = lines[lines.length - 1].trim().split(/\s+/);
-    if (fields.length < 4)
-        return null;
-
-    const size = Number(fields[1]);
-    const used = Number(fields[2]);
-    if (!Number.isFinite(size) || !Number.isFinite(used) || size <= 0 || used < 0)
-        return null;
-
-    // Prefer df's own capacity figure so the value matches `df` output.
-    const capacity = Number.parseInt(fields[4], 10);
-    const percent = Number.isFinite(capacity)
-        ? Math.min(100, capacity)
-        : (used / size) * 100;
-
-    return {size, used, percent};
-}
-
-/**
- * Ask df for the usage of the filesystem containing `path`. Runs
- * asynchronously so the shell's main loop is never blocked.
- */
-function queryDiskUsage(path, cancellable, callback) {
-    let process;
-    try {
-        process = Gio.Subprocess.new(
-            ['df', '-PB1', '--', path],
-            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
-    } catch {
-        callback(null);
-        return;
-    }
-
-    process.communicate_utf8_async(null, cancellable, (source, result) => {
-        try {
-            const [, stdout] = source.communicate_utf8_finish(result);
-            callback(parseDfOutput(stdout));
-        } catch {
-            callback(null);
-        }
-    });
-}
-
-function formatBytes(bytes) {
-    if (bytes === null || !Number.isFinite(bytes))
-        return '—';
-    return GLib.format_size_full(bytes, GLib.FormatSizeFlags.IEC_UNITS);
-}
-
-function memoryUsagePercent(memory) {
-    if (!memory || memory.total <= 0)
-        return null;
-    return Math.min(100, (memory.used / memory.total) * 100);
-}
-
-/**
- * One segment of the panel label, e.g. "CPU  12%".
- * Numbers are padded so the label does not jitter while updating.
- */
-function panelSegment(label, percent) {
-    if (percent === null || !Number.isFinite(percent))
-        return `${label} —`;
-    return `${label} ${String(Math.round(percent)).padStart(3)}%`;
-}
 
 const MetricRow = GObject.registerClass(
 class MetricRow extends PopupMenu.PopupBaseMenuItem {
