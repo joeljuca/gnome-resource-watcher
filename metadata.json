@@ -1,0 +1,8 @@
+{
+    "uuid": "gnome-resource-watcher@joel",
+    "name": "Resource Watcher",
+    "description": "Shows CPU, RAM, and disk usage in the top bar, with a detailed popup menu.",
+    "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+    "version": 1,
+    "settings-schema": "org.gnome.shell.extensions.resource-watcher"
+}

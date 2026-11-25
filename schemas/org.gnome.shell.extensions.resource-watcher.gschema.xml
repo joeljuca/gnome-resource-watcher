@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+    <schema id="org.gnome.shell.extensions.resource-watcher"
+            path="/org/gnome/shell/extensions/resource-watcher/">
+
+        <key name="update-interval" type="i">
+            <range min="1" max="300"/>
+            <default>2</default>
+            <summary>Update interval</summary>
+            <description>Number of seconds between two refreshes of the displayed values.</description>
+        </key>
+
+        <key name="show-cpu" type="b">
+            <default>true</default>
+            <summary>Show CPU usage</summary>
+            <description>Whether the CPU reading is shown in the top bar and the menu.</description>
+        </key>
+
+        <key name="show-ram" type="b">
+            <default>true</default>
+            <summary>Show RAM usage</summary>
+            <description>Whether the RAM reading is shown in the top bar and the menu.</description>
+        </key>
+
+        <key name="show-disk" type="b">
+            <default>true</default>
+            <summary>Show disk usage</summary>
+            <description>Whether the disk reading is shown in the top bar and the menu.</description>
+        </key>
+
+        <key name="disk-path" type="s">
+            <default>"/"</default>
+            <summary>Filesystem path</summary>
+            <description>Path of the filesystem whose usage is displayed (for example "/" or "/home").</description>
+        </key>
+
+    </schema>
+</schemalist>

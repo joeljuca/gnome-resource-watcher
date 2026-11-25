@@ -1,0 +1,28 @@
+/* Panel label: tabular figures keep the width stable while updating. */
+.rw-panel-label {
+    font-feature-settings: 'tnum';
+}
+
+/* Popup menu rows */
+.rw-row-title {
+    font-weight: bold;
+}
+
+.rw-row-detail {
+    font-size: 0.9em;
+}
+
+.rw-row-value {
+    min-width: 4em;
+    text-align: right;
+    font-feature-settings: 'tnum';
+}
+
+/* Usage thresholds in the menu (Adwaita palette) */
+.rw-warn {
+    color: #f5c211;
+}
+
+.rw-crit {
+    color: #f66151;
+}
