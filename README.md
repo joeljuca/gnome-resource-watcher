@@ -1,5 +1,7 @@
 # Resource Watcher
 
+[![CI](https://github.com/joeljuca/gnome-resource-watcher/actions/workflows/ci.yml/badge.svg)](https://github.com/joeljuca/gnome-resource-watcher/actions/workflows/ci.yml)
+
 A GNOME Shell extension that shows **CPU, RAM, and disk usage** in the top
 bar, with a detailed popup menu.
 
@@ -75,11 +77,28 @@ make clean
   it easy to test without touching your session:
 
   ```sh
-  make install
-  dbus-run-session -- gnome-shell --headless --wayland-display=test &
-  sleep 5 && gnome-extensions enable gnome-resource-watcher@joel
+  ci/headless-check.sh   # installs, boots a headless shell, enables, asserts ACTIVE
   ```
+
+  (Or step by step: `make install`, then
+  `dbus-run-session -- gnome-shell --headless --wayland-display=test &`,
+  then `gnome-extensions enable gnome-resource-watcher@joel`.)
 
 - If your `PATH` resolves `gsettings` to a non-system glib (e.g. Homebrew),
   its writes may not reach the session's dconf service — use
   `/usr/bin/gsettings` when changing extension settings from the terminal.
+
+## Continuous integration
+
+Every push to `main` and every pull request runs two jobs
+(`.github/workflows/ci.yml`):
+
+- **Unit tests** — parses `extension.js`/`prefs.js` with `gjs` (the only
+  allowed failure is the expected shell-only `resource://` import) and runs
+  the 48-check suite in `tests/run.js`.
+- **Headless shell integration** — boots a real GNOME Shell headless on a
+  private session bus via `ci/headless-check.sh`, enables the extension, and
+  asserts it reaches `ACTIVE` with no JS errors; then packages the zip,
+  verifies the bundle contains every shipped file, and uploads it as an
+  artifact. This job is what catches GNOME API breakage (e.g. the GNOME 51
+  `St.BoxLayout.vertical` removal) that unit tests cannot see.

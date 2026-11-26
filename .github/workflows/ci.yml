@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gjs libglib2.0-bin
+
+      # extension.js and prefs.js import GNOME Shell resource:// modules that
+      # only resolve inside a running shell, so plain `gjs -m` can't fully load
+      # them. It can still parse them: the only allowed failure is the expected
+      # resource-import error — anything else (SyntaxError, etc.) fails CI.
+      - name: Parse-check shell-only files
+        run: |
+          check_parses() {
+            local file="$1" expected="$2" out
+            out="$(gjs -m "$file" 2>&1 || true)"
+            if grep -qiE 'SyntaxError|ReferenceError' <<<"$out"; then
+              echo "::error::$file failed to parse"
+              printf '%s\n' "$out"
+              exit 1
+            fi
+            if ! grep -qF "$expected" <<<"$out"; then
+              echo "::error::$file failed for an unexpected reason"
+              printf '%s\n' "$out"
+              exit 1
+            fi
+            echo "OK: $file parses (only the expected shell-only import fails)"
+          }
+          check_parses extension.js 'resource:///org/gnome/shell/extensions/extension.js'
+          check_parses prefs.js 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js'
+
+      - name: Unit tests
+        run: make test
+
+  headless:
+    name: Headless shell integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GNOME Shell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-shell gjs libglib2.0-bin dbus unzip
+
+      # A full GNOME Shell as a headless compositor on a private session bus:
+      # loads the extension for real and asserts ACTIVE state + no JS errors.
+      # This is the layer that caught the GNOME 51 St.BoxLayout API removal
+      # and the GSettings schema type bug during development.
+      - name: Load extension in a headless shell
+        run: ci/headless-check.sh
+
+      - name: Package and verify bundle
+        run: |
+          make pack
+          listing="$(unzip -l gnome-resource-watcher@joel.shell-extension.zip)"
+          printf '%s\n' "$listing"
+          for required in \
+            extension.js \
+            lib.js \
+            prefs.js \
+            stylesheet.css \
+            metadata.json \
+            schemas/org.gnome.shell.extensions.resource-watcher.gschema.xml
+          do
+            if ! grep -qF "$required" <<<"$listing"; then
+              echo "::error::$required missing from the packaged bundle"
+              exit 1
+            fi
+          done
+
+      - name: Upload extension bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-resource-watcher
+          path: gnome-resource-watcher@joel.shell-extension.zip
